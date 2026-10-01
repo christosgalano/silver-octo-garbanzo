@@ -65,9 +65,9 @@ One-off, account-level setup applied by a human with admin credentials. See the 
 
 | Name | Description |
 | ---- | ----------- |
-| account\_id | Set as the AWS\_ACCOUNT\_ID repository variable. |
+| account\_id | Account ID. Set as the <ENV>\_ repository variables (e.g. DEV\_TF\_STATE\_BUCKET). |
 | apply\_role\_arns | Set each as the AWS\_APPLY\_ROLE\_ARN variable on the matching GitHub Environment. |
-| plan\_role\_arn | Set as the AWS\_PLAN\_ROLE\_ARN repository variable. |
+| plan\_role\_arn | Plan role for this account. Set as the <ENV>\_ repository variables (e.g. DEV\_TF\_STATE\_BUCKET). |
 | region | Set as the AWS\_REGION repository variable. |
-| state\_bucket | Terraform state bucket. Set as the TF\_STATE\_BUCKET repository variable. |
+| state\_bucket | Terraform state bucket. Set as the <ENV>\_ repository variables (e.g. DEV\_TF\_STATE\_BUCKET). |
 <!-- END_TF_DOCS -->
