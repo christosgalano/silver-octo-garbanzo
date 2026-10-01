@@ -5,7 +5,7 @@ This root module is the configuration for the development environment.
 ## Requirements
 
 | Name | Version |
-|------|---------|
+| ---- | ------- |
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | ~> 1.8 |
 
 ## Providers
