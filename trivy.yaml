@@ -16,3 +16,7 @@ misconfiguration:
     - terraform
   terraform:
     exclude-downloaded-modules: false
+    # Without this Trivy evaluates the environment with unknown inputs and
+    # silently skips anything that depends on them (for_each, counts).
+    vars:
+      - terraform/live/dev/terraform.tfvars

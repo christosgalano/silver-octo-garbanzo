@@ -13,9 +13,10 @@ resource "aws_instance" "this" {
   vpc_security_group_ids = var.security_group_ids
   iam_instance_profile   = var.iam_instance_profile
 
-  # Never an automatic public IP. Public instances get an EIP below, so the
-  # address is explicit in the plan and survives stop/start.
-  associate_public_ip_address = false
+  # No automatic public IP: subnets set map_public_ip_on_launch = false, and public
+  # instances get an EIP below. associate_public_ip_address is left unset on
+  # purpose: once the EIP attaches AWS reports it as true, and pinning it to false
+  # would force a replacement on every plan.
 
   user_data                   = var.user_data
   user_data_replace_on_change = true

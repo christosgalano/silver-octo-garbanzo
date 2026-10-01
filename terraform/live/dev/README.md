@@ -27,7 +27,7 @@ Root module for the dev environment. Backend, provider and one call to the base 
 | interface\_endpoints\_multi\_az | Put SSM interface endpoints in every AZ. | `bool` | n/a | yes |
 | owner | Team that owns the environment (tag). | `string` | n/a | yes |
 | project | Project name, used in resource names and tags. | `string` | n/a | yes |
-| public\_ingress\_cidrs | CIDRs allowed to reach the public instance on 80/443. | `list(string)` | n/a | yes |
+| public\_ingress\_cidr | CIDR allowed to reach the public instance on 80/443. | `string` | n/a | yes |
 | region | AWS region. | `string` | n/a | yes |
 | vpc\_cidr | VPC CIDR block. | `string` | n/a | yes |
 | allowed\_account\_ids | Accounts this configuration may run against. Null means no check; CI always sets it via TF\_VAR\_allowed\_account\_ids. | `list(string)` | `null` | no |

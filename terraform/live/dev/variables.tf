@@ -44,9 +44,9 @@ variable "instance_type" {
   type        = string
 }
 
-variable "public_ingress_cidrs" {
-  description = "CIDRs allowed to reach the public instance on 80/443."
-  type        = list(string)
+variable "public_ingress_cidr" {
+  description = "CIDR allowed to reach the public instance on 80/443."
+  type        = string
 }
 
 variable "artifacts_force_destroy" {

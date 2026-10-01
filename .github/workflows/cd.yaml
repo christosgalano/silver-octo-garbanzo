@@ -7,10 +7,10 @@ on:
   push:
     branches: [main]
     paths:
-      - "terraform/**"
-      - "policy/**"
-      - ".github/workflows/cd.yaml"
-      - ".github/actions/**"
+      - 'terraform/**'
+      - 'policy/**'
+      - '.github/workflows/cd.yaml'
+      - '.github/actions/**'
   workflow_dispatch:
 
 permissions: {}
@@ -23,20 +23,21 @@ concurrency:
 env:
   TF_VERSION: 1.16.4
   CONFTEST_VERSION: 0.71.0
-  TF_IN_AUTOMATION: "true"
-  TF_INPUT: "false"
-  WORKDIR: terraform/environments/dev
-  TF_VAR_allowed_account_ids: '["${{ vars.AWS_ACCOUNT_ID }}"]'
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: 'false'
+  WORKDIR: terraform/live/dev
 
 jobs:
   plan:
     name: Plan (dev)
     runs-on: ubuntu-latest
+    env:
+      TF_VAR_allowed_account_ids: '["${{ vars.DEV_AWS_ACCOUNT_ID }}"]'
     permissions:
       contents: read
       id-token: write
     outputs:
-      has_changes: ${{ steps.plan.outputs.has_changes }}
+      has_changes: ${{ steps.plan.outputs.plan_has_changes }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -45,45 +46,110 @@ jobs:
       - uses: ./.github/actions/terraform-setup
         with:
           working-directory: ${{ env.WORKDIR }}
-          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          role-to-assume: ${{ vars.DEV_AWS_PLAN_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-          state-bucket: ${{ vars.TF_STATE_BUCKET }}
+          state-bucket: ${{ vars.DEV_TF_STATE_BUCKET }}
           terraform-version: ${{ env.TF_VERSION }}
 
-      - name: terraform plan
+      - name: Terraform plan
         id: plan
         working-directory: ${{ env.WORKDIR }}
+        shell: bash
         run: |
-          set +e
-          terraform plan -lock=false -no-color -detailed-exitcode -out=tfplan | tee plan.txt
-          code=${PIPESTATUS[0]}
-          set -e
-          case "$code" in
-            0) echo "has_changes=false" >> "$GITHUB_OUTPUT" ;;
-            2) echo "has_changes=true" >> "$GITHUB_OUTPUT" ;;
-            *) exit "$code" ;;
-          esac
-          terraform show -json tfplan > plan.json
-          {
-            echo "### Plan: dev"
-            echo '```'
-            grep -E '^(Plan:|No changes\.)' plan.txt || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          # Default outputs so reporting is deterministic even on early failures.
+          echo "plan_has_changes=false" >> "$GITHUB_OUTPUT"
+          echo "create_count=0" >> "$GITHUB_OUTPUT"
+          echo "update_count=0" >> "$GITHUB_OUTPUT"
+          echo "delete_count=0" >> "$GITHUB_OUTPUT"
+          echo "exit_code=0" >> "$GITHUB_OUTPUT"
 
-      # Same policies as the PR, evaluated against the plan that will actually be
-      # applied. Catches anything that reached main without going through CI.
-      - name: conftest
+          # Read-only role, so no state lock: plans never block an apply.
+          PLAN_ARGS=(-out=tfplan -lock=false)
+          echo "Running: terraform plan -detailed-exitcode ${PLAN_ARGS[*]}"
+
+          # set +e around the pipeline so the expected codes (0 = no changes,
+          # 2 = changes) don't abort the step and PIPESTATUS stays reliable.
+          set +e
+          terraform plan -detailed-exitcode "${PLAN_ARGS[@]}" 2>&1 | tee plan.raw
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+
+          # Strip ANSI colour codes for the report copy.
+          awk '{ gsub(/\033\[[0-9;]*[[:alpha:]]/, ""); print }' plan.raw > plan.out
+
+          echo "Terraform plan exit code: ${EXIT_CODE}"
+          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+          case "${EXIT_CODE}" in
+            0|2) ;;
+            *) echo "Terraform plan failed with exit code ${EXIT_CODE}"; exit "${EXIT_CODE}" ;;
+          esac
+
+          PLAN_SUMMARY="$(awk '/^Plan:/ { line=$0 } END { print line }' plan.out)"
+          CREATE_COUNT="$(printf '%s\n' "${PLAN_SUMMARY}" | sed -E 's/.* ([0-9]+) to add.*/\1/; t; s/.*/0/')"
+          UPDATE_COUNT="$(printf '%s\n' "${PLAN_SUMMARY}" | sed -E 's/.* ([0-9]+) to change.*/\1/; t; s/.*/0/')"
+          DELETE_COUNT="$(printf '%s\n' "${PLAN_SUMMARY}" | sed -E 's/.* ([0-9]+) to destroy.*/\1/; t; s/.*/0/')"
+          echo "Plan summary: ${CREATE_COUNT} to add, ${UPDATE_COUNT} to change, ${DELETE_COUNT} to destroy."
+
+          [ "${EXIT_CODE}" = "2" ] && PLAN_HAS_CHANGES=true || PLAN_HAS_CHANGES=false
+          echo "plan_has_changes=${PLAN_HAS_CHANGES}" >> "$GITHUB_OUTPUT"
+          echo "create_count=${CREATE_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "update_count=${UPDATE_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "delete_count=${DELETE_COUNT}" >> "$GITHUB_OUTPUT"
+
+          # Machine-readable plan for conftest.
+          terraform show -json tfplan > plan.json
+
+      - name: Install conftest
         run: |
           archive="conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
           base="https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}"
           curl -fsSLO "${base}/${archive}"
           curl -fsSL "${base}/checksums.txt" | grep " ${archive}$" | sha256sum -c -
           tar -xzf "${archive}" conftest
-          ./conftest test "${WORKDIR}/plan.json" --policy policy --all-namespaces --no-color
+          sudo mv conftest /usr/local/bin/
+
+      # Same policies as the PR, evaluated against the plan that will actually be
+      # applied. Catches anything that reached main without going through CI.
+      - name: conftest
+        id: conftest
+        run: |
+          set -o pipefail
+          conftest test "${WORKDIR}/plan.json" --policy policy --all-namespaces --no-color | tee conftest.txt
+
+      - name: Policy results (Markdown)
+        if: always() && steps.plan.outcome == 'success'
+        run: |
+          {
+            if [ "${{ steps.conftest.outcome }}" = "success" ]; then
+              echo "**Policy check (conftest) passed**"
+            else
+              echo "**Policy check (conftest) failed**"
+            fi
+            echo
+            echo "<details><summary>Show policy output</summary>"
+            echo
+            echo '```'
+            cat conftest.txt 2>/dev/null || echo "not run"
+            echo '```'
+            echo "</details>"
+          } > policy.md
+
+      - name: Publish Terraform report (plan)
+        if: always()
+        uses: ./.github/actions/terraform-report
+        with:
+          environment: dev
+          working-directory: ${{ env.WORKDIR }}
+          phase: plan
+          command: terraform plan -chdir=${{ env.WORKDIR }} -lock=false -out=tfplan
+          log-path: ${{ env.WORKDIR }}/plan.out
+          outcome: ${{ steps.plan.outcome || 'failure' }}
+          exit-code: ${{ steps.plan.outputs.exit_code || '1' }}
+          extra-markdown-path: policy.md
 
       - name: Upload saved plan
-        if: steps.plan.outputs.has_changes == 'true'
+        if: steps.plan.outputs.plan_has_changes == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: tfplan-dev
@@ -99,6 +165,8 @@ jobs:
     # Required reviewer and main-only deployment branch rule live on this
     # environment. The apply role trusts only tokens issued for it.
     environment: dev
+    env:
+      TF_VAR_allowed_account_ids: '["${{ vars.DEV_AWS_ACCOUNT_ID }}"]'
     permissions:
       contents: read
       id-token: write
@@ -112,7 +180,7 @@ jobs:
           working-directory: ${{ env.WORKDIR }}
           role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-          state-bucket: ${{ vars.TF_STATE_BUCKET }}
+          state-bucket: ${{ vars.DEV_TF_STATE_BUCKET }}
           terraform-version: ${{ env.TF_VERSION }}
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -122,6 +190,40 @@ jobs:
 
       # Applies exactly what was reviewed. If state moved since the plan,
       # Terraform rejects the stale plan instead of applying something else.
-      - name: terraform apply
+      - name: Terraform apply
+        id: apply
         working-directory: ${{ env.WORKDIR }}
-        run: terraform apply -no-color tfplan
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Don't fail here so the report still runs; the last step fails the job.
+          set +e
+          terraform apply tfplan 2>&1 | tee apply.raw
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          awk '{ gsub(/\033\[[0-9;]*[[:alpha:]]/, ""); print }' apply.raw > apply.out
+
+          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+          echo "Terraform apply exit code: ${EXIT_CODE}"
+
+      - name: Publish Terraform report (apply)
+        if: always()
+        uses: ./.github/actions/terraform-report
+        with:
+          environment: dev
+          working-directory: ${{ env.WORKDIR }}
+          phase: apply
+          command: terraform apply -chdir=${{ env.WORKDIR }} tfplan
+          log-path: ${{ env.WORKDIR }}/apply.out
+          outcome: ${{ steps.apply.outputs.exit_code == '0' && 'success' || 'failure' }}
+          exit-code: ${{ steps.apply.outputs.exit_code || '1' }}
+
+      - name: Fail job if Terraform apply failed
+        if: always()
+        env:
+          APPLY_EXIT_CODE: ${{ steps.apply.outputs.exit_code || '1' }}
+        run: |
+          if [ "${APPLY_EXIT_CODE}" != "0" ]; then
+            echo "Terraform apply failed with exit code ${APPLY_EXIT_CODE}."
+            exit 1
+          fi
