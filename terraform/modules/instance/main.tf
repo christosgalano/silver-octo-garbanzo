@@ -49,7 +49,8 @@ resource "aws_instance" "this" {
 
   lifecycle {
     # A new AL2023 release should not silently replace a running instance on the
-    # next apply. Rolling the AMI is a deliberate change (set ami_id, or taint).
+    # next apply. Because ami is ignored, changing ami_id alone won't replace it.
+    # Roll the AMI deliberately with: terraform apply -replace='<address of this instance>'
     ignore_changes = [ami]
   }
 }
