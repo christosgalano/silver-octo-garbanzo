@@ -83,8 +83,18 @@ runs:
             -e 's/^(.+): Destruction complete after .*/-\1 destroyed/p' \
             -e 's/^(.+): Modifications complete after .*/!\1 updated in-place/p' \
             "${log}" || true)
+          # Resources that errored, with the error title and the first line of the
+          # API error, so a failed create or update is as visible as a success.
+          failed=$(awk '
+            /^│ Error: /                  { title = $0; sub(/^│ Error: /, "", title); code = ""; next }
+            /^│   with .*,$/              { addr = $3; sub(/,$/, "", addr); next }
+            /^│ [A-Za-z]+\.[A-Za-z]+: /   { if (code == "") { code = $2; sub(/:$/, "", code) } }
+            /^╵/                          { if (addr != "") print "-" addr " FAILED: " title (code != "" ? " (" code ")" : ""); addr = "" }
+          ' "${log}" || true)
+          [ -n "${failed}" ] && diff=$(printf '%s\n%s' "${diff}" "${failed}" | sed '/^$/d')
         fi
         changes=$(printf '%s' "${diff}" | grep -c . || true)
+        failures=$(printf '%s' "${diff}" | grep -c ' FAILED: ' || true)
 
         # Full output, without the refresh noise before the actions block
         # (plan) or the progress lines (apply).
@@ -113,7 +123,12 @@ runs:
           echo '```'
           echo
           if [ "${changes}" -gt 0 ]; then
-            echo "<details open><summary>Diff of ${changes} change(s).</summary>"
+            if [ "${PHASE}" = "apply" ]; then
+              label="Applied $((changes - failures)) change(s), ${failures} failed."
+            else
+              label="Diff of ${changes} change(s)."
+            fi
+            echo "<details open><summary>${label}</summary>"
             echo
             echo '```diff'
             printf '%s\n' "${diff}"
