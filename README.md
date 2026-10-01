@@ -234,12 +234,14 @@ Not suppressions, but worth listing:
 7. Set `ShareCreds: false` in the SSM Agent config through user data, so root doesn't silently run as the management role.
 8. Publish the policies as an OPA bundle so other repos consume the same rules, as in my template repo.
 
-## Where I used AI
+## How this was built, and where I used AI
 
-I used AI (Claude) as a pair while building this:
+A fair amount of this wasn't written from scratch. I reused material I'd built on previous projects:
 
-- To check AWS details I wanted to be sure of, mainly the DHMC prerequisites and precedence, and Trivy's inline-ignore syntax.
-- To review the IAM policies and Rego for gaps.
-- To help draft and tighten this README.
+- my [terraform-template-repo](https://github.com/christosgalano/terraform-template-repo) for the starting layout;
+- my [opa-template-repo](https://github.com/christosgalano/opa-template-repo) for how the Rego policies, helpers and tests are structured;
+- Terraform pipeline patterns I'd already used elsewhere: change detection, plan with `-detailed-exitcode`, one report for plan and apply, and the saved plan applied behind an environment.
 
-The design decisions, the trade-offs and the suppressions are mine, and I'm happy to walk through any of them.
+I used Claude Code to write a good part of the code itself: the Rego policies, the Terraform tests and much of the Terraform. I also used it to check AWS details I wanted to be sure of (mainly the Default Host Management prerequisites and Trivy's inline-ignore syntax), and to challenge my reasoning.
+
+The design is mine: the layout, which tools to use and how they're configured, what gets enforced where, and what gets accepted and why. AI was there to speed things up, not to fill gaps in knowledge or intent. I'm happy to walk through any of it.
