@@ -36,7 +36,7 @@ Every suppression is inline with its reason (egress for package installs, bucket
 
 GitHub Actions authenticates to AWS with OIDC, so there are no stored keys. PRs plan with a read-only role. After merge, CD re-plans `main`, re-checks policy, waits for approval on the `dev` environment, then applies that exact saved plan. The gate is enforced in both GitHub and the AWS role trust. There is no destroy workflow on purpose.
 
-Cost if left running is roughly $45–50/month, mostly the SSM endpoints and two small instances.
+Cost if left running is roughly $35–40/month, mostly the SSM endpoints and two small instances.
 
 ## Known limits
 

@@ -9,13 +9,13 @@ variable "account_id" {
 }
 
 variable "cidr_block" {
-  description = "VPC CIDR. Each subnet gets a /20 carved out of it."
+  description = "VPC CIDR, which must be a /16. Each subnet gets a /20 carved out of it."
   type        = string
   default     = "10.0.0.0/16"
 
   validation {
-    condition     = can(cidrhost(var.cidr_block, 0)) && tonumber(split("/", var.cidr_block)[1]) <= 16
-    error_message = "cidr_block must be a valid CIDR of /16 or larger."
+    condition     = can(cidrhost(var.cidr_block, 0)) && tonumber(split("/", var.cidr_block)[1]) == 16
+    error_message = "cidr_block must be a valid /16 CIDR, because subnets are fixed at /20."
   }
 }
 
@@ -31,7 +31,7 @@ variable "az_count" {
 }
 
 variable "enable_ssm_endpoints" {
-  description = "Create the ssm, ssmmessages and ec2messages interface endpoints so private instances can use Session Manager without internet access."
+  description = "Create the ssm and ssmmessages interface endpoints so private instances can use Session Manager without internet access."
   type        = bool
   default     = true
 }

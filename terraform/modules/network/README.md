@@ -53,8 +53,8 @@ Also takes over the VPC's default security group and leaves it empty, and sends 
 | name | Name prefix for every resource in the network. | `string` | n/a | yes |
 | permissions\_boundary\_arn | Permissions boundary attached to IAM roles created by this module. | `string` | n/a | yes |
 | az\_count | Number of availability zones to spread subnets across. | `number` | `2` | no |
-| cidr\_block | VPC CIDR. Each subnet gets a /20 carved out of it. | `string` | `"10.0.0.0/16"` | no |
-| enable\_ssm\_endpoints | Create the ssm, ssmmessages and ec2messages interface endpoints so private instances can use Session Manager without internet access. | `bool` | `true` | no |
+| cidr\_block | VPC CIDR, which must be a /16. Each subnet gets a /20 carved out of it. | `string` | `"10.0.0.0/16"` | no |
+| enable\_ssm\_endpoints | Create the ssm and ssmmessages interface endpoints so private instances can use Session Manager without internet access. | `bool` | `true` | no |
 | flow\_log\_retention\_days | Retention for VPC flow logs. | `number` | `30` | no |
 | interface\_endpoints\_multi\_az | Place interface endpoints in every private subnet (true) or only the first (false, cheaper). | `bool` | `true` | no |
 

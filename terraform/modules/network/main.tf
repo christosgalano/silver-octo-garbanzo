@@ -9,7 +9,7 @@ locals {
   # private instance; flip interface_endpoints_multi_az when that stops being true.
   endpoint_subnet_ids = var.interface_endpoints_multi_az ? values(aws_subnet.private)[*].id : [aws_subnet.private[local.azs[0]].id]
 
-  ssm_endpoints = var.enable_ssm_endpoints ? toset(["ssm", "ssmmessages", "ec2messages"]) : toset([])
+  ssm_endpoints = var.enable_ssm_endpoints ? toset(["ssm", "ssmmessages"]) : toset([])
 }
 
 data "aws_availability_zones" "this" {

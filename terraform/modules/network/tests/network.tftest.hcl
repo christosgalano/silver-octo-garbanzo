@@ -54,8 +54,8 @@ run "two_az_layout" {
   }
 
   assert {
-    condition     = length(aws_vpc_endpoint.ssm) == 3
-    error_message = "Session Manager needs the ssm, ssmmessages and ec2messages endpoints."
+    condition     = length(aws_vpc_endpoint.ssm) == 2
+    error_message = "Session Manager needs the ssm and ssmmessages endpoints."
   }
 
   assert {
