@@ -13,8 +13,6 @@ tfplan
 plan.json
 plan.txt
 
-# Bootstrap inputs (personal values, e.g. budget e-mail)
-bootstrap/terraform.tfvars
 
 # Editors / OS
 .vscode/

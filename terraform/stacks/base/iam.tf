@@ -1,7 +1,7 @@
 # Role for the private instance: read the artefacts bucket, nothing else.
 #
 # It deliberately has no Systems Manager permissions. Session Manager access comes
-# from Default Host Management Configuration (set up in bootstrap/), which only
+# from Default Host Management Configuration (set up outside this repo), which only
 # kicks in when the instance profile does NOT allow ssm:UpdateInstanceInformation.
 # That keeps this role exactly what the brief asks for.
 
