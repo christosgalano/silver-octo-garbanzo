@@ -1,0 +1,18 @@
+# Trivy misconfiguration scan for all Terraform in the repo.
+# Any finding fails the job. Accepted findings are suppressed inline, next to the
+# resource, with a reason (and an expiry where the decision is temporary), so a
+# reviewer sees the suppression in the same diff as the code it covers.
+exit-code: 1
+severity:
+  - LOW
+  - MEDIUM
+  - HIGH
+  - CRITICAL
+scan:
+  scanners:
+    - misconfig
+misconfiguration:
+  scanners:
+    - terraform
+  terraform:
+    exclude-downloaded-modules: false
