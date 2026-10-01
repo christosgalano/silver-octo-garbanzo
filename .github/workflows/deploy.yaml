@@ -1,0 +1,71 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+        required: true
+        description: 'The environment root module to deploy.'
+      noop:
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+        default: 'false'
+        required: true
+        description: 'Noop (no operations) mode.'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event }}
+  cancel-in-progress: true
+
+jobs:
+  terraform_scan:
+    uses: ./.github/workflows/scan.yaml
+    permissions:
+      contents: read
+      issues: read
+      checks: write
+      pull-requests: write
+    with:
+      environment: ${{ inputs.environment }}
+
+  terraform_test:
+    uses: ./.github/workflows/test.yaml
+    needs: terraform_scan
+    secrets: inherit
+    with:
+      suite: 'all'
+      environment: ${{ inputs.environment }}
+
+  terraform_deploy:
+    name: Deploy Infrastructure
+    needs: terraform_test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/environments/${{ inputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '>= 1.8, < 2.0'
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform plan
+        run: terraform plan -out=tfplan -input=false
+
+      - name: Terraform apply
+        if: github.event.inputs.noop == 'false'
+        run: terraform apply tfplan
