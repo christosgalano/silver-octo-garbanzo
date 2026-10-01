@@ -32,10 +32,15 @@ variable "instance_type" {
   default     = "t3.micro"
 }
 
-variable "public_ingress_cidrs" {
-  description = "CIDRs allowed to reach the public instance on 80/443."
-  type        = list(string)
-  default     = ["0.0.0.0/0"]
+variable "public_ingress_cidr" {
+  description = "CIDR allowed to reach the public instance on 80/443."
+  type        = string
+  default     = "0.0.0.0/0"
+
+  validation {
+    condition     = can(cidrhost(var.public_ingress_cidr, 0))
+    error_message = "public_ingress_cidr must be a valid IPv4 CIDR."
+  }
 }
 
 variable "artifacts_force_destroy" {

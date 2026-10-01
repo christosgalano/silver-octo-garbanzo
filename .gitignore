@@ -20,3 +20,7 @@ bootstrap/terraform.tfvars
 .vscode/
 .idea/
 .DS_Store
+plan.raw
+plan.out
+apply.raw
+apply.out

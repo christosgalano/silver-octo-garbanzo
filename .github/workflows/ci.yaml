@@ -21,10 +21,31 @@ env:
   REGAL_VERSION: 0.43.0
   CONFTEST_VERSION: 0.71.0
   TERRAFORM_DOCS_VERSION: v0.24.0
-  TF_IN_AUTOMATION: "true"
-  TF_INPUT: "false"
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: 'false'
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      units: ${{ steps.changes.outputs.units }}
+      environments: ${{ steps.changes.outputs.environments }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: What changed
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: .github/scripts/changes.sh "${BASE_SHA}" "${HEAD_SHA}"
+
   static:
     name: Format, validate, lint, docs
     runs-on: ubuntu-latest
@@ -45,7 +66,7 @@ jobs:
 
       - name: terraform validate
         run: |
-          for dir in bootstrap terraform/environments/*/; do
+          for dir in bootstrap terraform/live/*/; do
             echo "::group::validate ${dir}"
             terraform -chdir="${dir}" init -backend=false -lockfile=readonly
             terraform -chdir="${dir}" validate
@@ -70,7 +91,7 @@ jobs:
           curl -fsSLO "${base}/${archive}"
           curl -fsSL "${base}/terraform-docs-${TERRAFORM_DOCS_VERSION}.sha256sum" | grep " ${archive}$" | sha256sum -c -
           tar -xzf "${archive}" terraform-docs
-          for dir in terraform/modules/*/ terraform/stacks/*/ terraform/environments/*/ bootstrap/; do
+          for dir in terraform/modules/*/ terraform/stacks/*/ terraform/live/*/ bootstrap/; do
             ./terraform-docs --config .terraform-docs.yml --output-check "${dir}" \
               || { echo "::error::README in ${dir} is stale. Run: pre-commit run terraform_docs --all-files"; exit 1; }
           done
@@ -137,15 +158,23 @@ jobs:
           awk -v c="$coverage" 'BEGIN { exit !(c >= 90) }' || { echo "::error::Policy coverage ${coverage}% is below 90%"; exit 1; }
 
   plan:
-    name: Plan and policy check (dev)
+    name: Plan and policy check (${{ matrix.environment }})
+    needs: changes
+    if: needs.changes.outputs.environments != '[]'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJson(needs.changes.outputs.environments) }}
     permissions:
       contents: read
       id-token: write # OIDC to AWS
       pull-requests: write # plan comment
     env:
-      WORKDIR: terraform/environments/dev
-      TF_VAR_allowed_account_ids: '["${{ vars.AWS_ACCOUNT_ID }}"]'
+      WORKDIR: terraform/live/${{ matrix.environment }}
+      # Per-environment settings are repository variables prefixed with the
+      # environment name: DEV_AWS_ACCOUNT_ID, DEV_TF_STATE_BUCKET, DEV_AWS_PLAN_ROLE_ARN.
+      TF_VAR_allowed_account_ids: ${{ format('["{0}"]', vars[format('{0}_AWS_ACCOUNT_ID', matrix.environment)]) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -154,18 +183,58 @@ jobs:
       - uses: ./.github/actions/terraform-setup
         with:
           working-directory: ${{ env.WORKDIR }}
-          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          role-to-assume: ${{ vars[format('{0}_AWS_PLAN_ROLE_ARN', matrix.environment)] }}
           aws-region: ${{ vars.AWS_REGION }}
-          state-bucket: ${{ vars.TF_STATE_BUCKET }}
+          state-bucket: ${{ vars[format('{0}_TF_STATE_BUCKET', matrix.environment)] }}
           terraform-version: ${{ env.TF_VERSION }}
 
-      # Read-only role, so no state lock. Applies take the lock; PR plans never block them.
-      - name: terraform plan
+      - name: Terraform plan
         id: plan
         working-directory: ${{ env.WORKDIR }}
+        shell: bash
         run: |
-          set -o pipefail
-          terraform plan -lock=false -no-color -out=tfplan | tee plan.txt
+          set -euo pipefail
+          # Default outputs so reporting is deterministic even on early failures.
+          echo "plan_has_changes=false" >> "$GITHUB_OUTPUT"
+          echo "create_count=0" >> "$GITHUB_OUTPUT"
+          echo "update_count=0" >> "$GITHUB_OUTPUT"
+          echo "delete_count=0" >> "$GITHUB_OUTPUT"
+          echo "exit_code=0" >> "$GITHUB_OUTPUT"
+
+          # Read-only role, so no state lock: plans never block an apply.
+          PLAN_ARGS=(-out=tfplan -lock=false)
+          echo "Running: terraform plan -detailed-exitcode ${PLAN_ARGS[*]}"
+
+          # set +e around the pipeline so the expected codes (0 = no changes,
+          # 2 = changes) don't abort the step and PIPESTATUS stays reliable.
+          set +e
+          terraform plan -detailed-exitcode "${PLAN_ARGS[@]}" 2>&1 | tee plan.raw
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+
+          # Strip ANSI colour codes for the report copy.
+          awk '{ gsub(/\033\[[0-9;]*[[:alpha:]]/, ""); print }' plan.raw > plan.out
+
+          echo "Terraform plan exit code: ${EXIT_CODE}"
+          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+          case "${EXIT_CODE}" in
+            0|2) ;;
+            *) echo "Terraform plan failed with exit code ${EXIT_CODE}"; exit "${EXIT_CODE}" ;;
+          esac
+
+          PLAN_SUMMARY="$(awk '/^Plan:/ { line=$0 } END { print line }' plan.out)"
+          CREATE_COUNT="$(printf '%s\n' "${PLAN_SUMMARY}" | sed -E 's/.* ([0-9]+) to add.*/\1/; t; s/.*/0/')"
+          UPDATE_COUNT="$(printf '%s\n' "${PLAN_SUMMARY}" | sed -E 's/.* ([0-9]+) to change.*/\1/; t; s/.*/0/')"
+          DELETE_COUNT="$(printf '%s\n' "${PLAN_SUMMARY}" | sed -E 's/.* ([0-9]+) to destroy.*/\1/; t; s/.*/0/')"
+          echo "Plan summary: ${CREATE_COUNT} to add, ${UPDATE_COUNT} to change, ${DELETE_COUNT} to destroy."
+
+          [ "${EXIT_CODE}" = "2" ] && PLAN_HAS_CHANGES=true || PLAN_HAS_CHANGES=false
+          echo "plan_has_changes=${PLAN_HAS_CHANGES}" >> "$GITHUB_OUTPUT"
+          echo "create_count=${CREATE_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "update_count=${UPDATE_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "delete_count=${DELETE_COUNT}" >> "$GITHUB_OUTPUT"
+
+          # Machine-readable plan for conftest.
           terraform show -json tfplan > plan.json
 
       - name: Install conftest
@@ -183,44 +252,81 @@ jobs:
           set -o pipefail
           conftest test "${WORKDIR}/plan.json" --policy policy --all-namespaces --no-color | tee conftest.txt
 
-      - name: Comment plan and policy results
+      - name: Policy results (Markdown)
         if: always() && steps.plan.outcome == 'success'
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          CONFTEST_OUTCOME: ${{ steps.conftest.outcome }}
+        run: |
+          {
+            if [ "${{ steps.conftest.outcome }}" = "success" ]; then
+              echo "**Policy check (conftest) passed**"
+            else
+              echo "**Policy check (conftest) failed**"
+            fi
+            echo
+            echo "<details><summary>Show policy output</summary>"
+            echo
+            echo '```'
+            cat conftest.txt 2>/dev/null || echo "not run"
+            echo '```'
+            echo "</details>"
+          } > policy.md
+
+      - name: Publish Terraform report (plan)
+        if: always()
+        uses: ./.github/actions/terraform-report
         with:
-          script: |
-            const fs = require('fs');
-            const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : 'not run');
-            const limit = (s, n) => (s.length > n ? s.slice(0, n) + '\n... truncated, see the job log' : s);
-            const plan = read(`${process.env.WORKDIR}/plan.txt`);
-            const summary = (plan.match(/^(Plan:.*|No changes\..*)$/m) || ['(see log)'])[0];
-            const marker = '<!-- terraform-plan-dev -->';
-            const body = [
-              marker,
-              `### Terraform plan: dev`,
-              `**${summary}**  ·  policy check: **${process.env.CONFTEST_OUTCOME}**`,
-              '',
-              '<details><summary>conftest</summary>',
-              '',
-              '```',
-              limit(read('conftest.txt'), 20000),
-              '```',
-              '</details>',
-              '',
-              '<details><summary>plan</summary>',
-              '',
-              '```',
-              limit(plan, 40000),
-              '```',
-              '</details>',
-              '',
-              `Commit ${context.sha.slice(0, 7)} · [run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
-            ].join('\n');
-            const { data: comments } = await github.rest.issues.listComments({ ...context.repo, issue_number: context.issue.number });
-            const existing = comments.find((c) => c.user.type === 'Bot' && c.body.includes(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
-            } else {
-              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
-            }
+          environment: ${{ matrix.environment }}
+          working-directory: ${{ env.WORKDIR }}
+          phase: plan
+          command: terraform plan -chdir=${{ env.WORKDIR }} -lock=false
+          log-path: ${{ env.WORKDIR }}/plan.out
+          outcome: ${{ steps.plan.outcome || 'failure' }}
+          exit-code: ${{ steps.plan.outputs.exit_code || '1' }}
+          extra-markdown-path: policy.md
+
+  tests:
+    name: Terraform test (${{ matrix.unit }})
+    needs: changes
+    if: needs.changes.outputs.units != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        unit: ${{ fromJson(needs.changes.outputs.units) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      # Mocked provider: no AWS credentials, nothing is created.
+      - name: terraform test
+        working-directory: ${{ matrix.unit }}
+        run: |
+          terraform init -backend=false
+          terraform test
+
+  # The only required status check. Matrix jobs are named per unit/environment
+  # and are skipped when nothing relevant changed, so branch protection points
+  # here instead: it fails if anything it depends on failed or was cancelled.
+  gate:
+    name: CI gate
+    if: always()
+    needs: [changes, static, security, policy-tests, tests, plan]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Check results
+        env:
+          RESULTS: ${{ toJson(needs) }}
+        run: |
+          echo "${RESULTS}" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if echo "${RESULTS}" | jq -e '[.[].result] | any(. == "failure" or . == "cancelled")' >/dev/null; then
+            echo "::error::One or more required jobs failed."
+            exit 1
+          fi

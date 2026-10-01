@@ -14,7 +14,7 @@ updates:
   - package-ecosystem: terraform
     directories:
       - "/bootstrap"
-      - "/terraform/environments/*"
+      - "/terraform/live/*"
     schedule:
       interval: weekly
     groups:
