@@ -55,7 +55,9 @@ One-off, account-level setup applied by a human with admin credentials. See the 
 | budget\_alert\_email | Where budget alerts go. | `string` | n/a | yes |
 | budget\_limit\_usd | Monthly cost budget. Alerts at 50%, 80% and 100% (forecast). | `number` | `20` | no |
 | environments | GitHub Environments that may assume the apply role. One role per environment keeps blast radius per environment. | `list(string)` | ```[ "dev" ]``` | no |
+| github\_owner\_id | Numeric ID of the repository owner. Part of GitHub's immutable OIDC subject claim. | `number` | `61470783` | no |
 | github\_repository | GitHub repository allowed to assume the pipeline roles, as owner/name. | `string` | `"christosgalano/silver-octo-garbanzo"` | no |
+| github\_repository\_id | Numeric ID of the repository. Part of GitHub's immutable OIDC subject claim, so a renamed or re-created repository with the same name cannot inherit the trust. | `number` | `1399716642` | no |
 | project | Project name. Workload roles created by the pipeline must start with this prefix. | `string` | `"acme"` | no |
 | region | AWS region. | `string` | `"eu-central-1"` | no |
 
