@@ -1,9 +1,8 @@
 # Everything needs a review from the platform owner.
 * @christosgalano
 
-# Guardrails: changes to policies, pipelines, suppressions and bootstrap
-# (OIDC trust, pipeline roles) are the ones that can quietly weaken everything else.
+# Guardrails: changes to policies, pipelines, suppressions
+# (the things are the ones that can quietly weaken everything else.
 /policy/           @christosgalano
 /.github/          @christosgalano
-/bootstrap/        @christosgalano
 /trivy.yaml        @christosgalano

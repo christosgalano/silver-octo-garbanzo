@@ -50,7 +50,7 @@ variable "artifacts_force_destroy" {
 }
 
 variable "permissions_boundary_name" {
-  description = "Name of the IAM policy (created by bootstrap/) that every role in this stack must carry as its permissions boundary."
+  description = "Name of the IAM policy (created outside this repo) that every role in this stack must carry as its permissions boundary."
   type        = string
   default     = "acme-workload-boundary"
 }
