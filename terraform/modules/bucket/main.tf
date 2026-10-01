@@ -1,4 +1,4 @@
-#trivy:ignore:AWS-0089:exp:2027-03-31 Access logging needs a second bucket (and that one needs a home for its own logs). Accepted for dev; see README, R3.
+#trivy:ignore:AWS-0089:exp:2027-03-31 Server access logging needs a separate logging bucket and extra storage and operational overhead. Accepted for this dev environment; CloudTrail covers API audit. Revisit for production.
 resource "aws_s3_bucket" "this" {
   bucket        = var.name
   force_destroy = var.force_destroy

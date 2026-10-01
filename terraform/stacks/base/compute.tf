@@ -25,7 +25,7 @@ resource "aws_vpc_security_group_ingress_rule" "public_web" {
   tags = { Exposure = "public" }
 }
 
-#trivy:ignore:AWS-0104 Needs outbound HTTP/HTTPS for OS packages and the SSM endpoint. Restricted to 80/443; see README, R3.
+#trivy:ignore:AWS-0104 Needs outbound HTTP/HTTPS for OS packages and the SSM endpoint. Restricted to 80/443; see README.
 resource "aws_vpc_security_group_egress_rule" "public_web" {
   for_each = toset(["80", "443"])
 
