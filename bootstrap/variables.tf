@@ -16,6 +16,18 @@ variable "github_repository" {
   default     = "christosgalano/silver-octo-garbanzo"
 }
 
+variable "github_owner_id" {
+  description = "Numeric ID of the repository owner. Part of GitHub's immutable OIDC subject claim."
+  type        = number
+  default     = 61470783
+}
+
+variable "github_repository_id" {
+  description = "Numeric ID of the repository. Part of GitHub's immutable OIDC subject claim, so a renamed or re-created repository with the same name cannot inherit the trust."
+  type        = number
+  default     = 1399716642
+}
+
 variable "environments" {
   description = "GitHub Environments that may assume the apply role. One role per environment keeps blast radius per environment."
   type        = list(string)

@@ -168,7 +168,7 @@ Why not fully automatic: even in dev, the pause costs one click and buys a look 
 The gate is enforced twice:
 
 - In GitHub: the environment's required reviewer and its main-only branch rule.
-- In AWS: the apply role trusts only `repo:…:environment:dev` tokens.
+- In AWS: the apply role trusts only `environment:dev` tokens. The trust uses GitHub's immutable subject claims (`repo:owner@<id>/repo@<id>:…`), so a renamed or re-created repository with the same name can't inherit it. The first CI run failed exactly here: the trust policy still had the name-only format and STS refused the token.
 
 A workflow on another branch can't get a token the apply role accepts.
 
@@ -205,7 +205,6 @@ Not suppressions, but worth listing:
 2. Configure Session Manager preferences: session logs to S3/CloudWatch, idle timeout, and `run as` a non-root user.
 3. Put an ALB + ACM in front of the web tier and move the instance into a private subnet. The public subnet would then hold only the ALB.
 4. Scheduled drift detection (nightly `plan -detailed-exitcode` that opens an issue).
-5. Customise the OIDC `sub` claim to include immutable repository and owner IDs, so a renamed or recreated repo can't inherit the trust.
-6. Tighten the apply role with tag-based conditions on EC2 and KMS, and move to a dedicated account per environment under AWS Organizations, with SCPs as the outer fence.
-7. A conftest rule that instance profiles never grant `ssm:UpdateInstanceInformation` (which would silently bypass DHMC), and one for S3 public-access-block completeness.
-8. Publish the policies as an OPA bundle so other repos consume the same rules, as in my template repo.
+5. Tighten the apply role with tag-based conditions on EC2 and KMS, and move to a dedicated account per environment under AWS Organizations, with SCPs as the outer fence.
+6. A conftest rule that instance profiles never grant `ssm:UpdateInstanceInformation` (which would silently bypass DHMC), and one for S3 public-access-block completeness.
+7. Publish the policies as an OPA bundle so other repos consume the same rules, as in my template repo.

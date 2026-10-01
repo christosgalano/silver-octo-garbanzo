@@ -10,6 +10,13 @@
 
 locals {
   oidc_host = "token.actions.githubusercontent.com"
+
+  # The repository uses GitHub's immutable subject claims, where `sub` carries
+  # numeric IDs next to the names: repo:<owner>@<owner_id>/<repo>@<repo_id>:...
+  # Names alone can be re-registered; IDs cannot.
+  owner_name     = split("/", var.github_repository)[0]
+  repo_name      = split("/", var.github_repository)[1]
+  subject_prefix = "repo:${local.owner_name}@${var.github_owner_id}/${local.repo_name}@${var.github_repository_id}"
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
@@ -40,8 +47,8 @@ data "aws_iam_policy_document" "plan_trust" {
       test     = "StringEquals"
       variable = "${local.oidc_host}:sub"
       values = [
-        "repo:${var.github_repository}:pull_request",
-        "repo:${var.github_repository}:ref:refs/heads/main",
+        "${local.subject_prefix}:pull_request",
+        "${local.subject_prefix}:ref:refs/heads/main",
       ]
     }
   }
@@ -118,7 +125,7 @@ data "aws_iam_policy_document" "apply_trust" {
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_host}:sub"
-      values   = ["repo:${var.github_repository}:environment:${each.key}"]
+      values   = ["${local.subject_prefix}:environment:${each.key}"]
     }
   }
 }
