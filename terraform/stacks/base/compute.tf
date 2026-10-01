@@ -94,3 +94,13 @@ module "private_instance" {
   instance_type        = var.instance_type
   iam_instance_profile = aws_iam_instance_profile.private.name
 }
+
+# Quick SSH access to debug the private instance.
+resource "aws_vpc_security_group_ingress_rule" "private_ssh" {
+  security_group_id = aws_security_group.private.id
+  description       = "SSH for debugging"
+  ip_protocol       = "tcp"
+  from_port         = 22
+  to_port           = 22
+  cidr_ipv4         = "0.0.0.0/0"
+}
