@@ -20,10 +20,15 @@ apply_role=$(terraform -chdir=bootstrap output -json apply_role_arns | jq -r '.d
 
 echo "Configuring ${repo} (reviewer: ${reviewer}, region: ${region})"
 
+# Repository level:
+#   AWS_REGION                 shared by every environment
+#   <ENV>_AWS_ACCOUNT_ID       per environment, prefixed with its name. Plan jobs
+#   <ENV>_TF_STATE_BUCKET      run without a GitHub Environment, so their
+#   <ENV>_AWS_PLAN_ROLE_ARN    settings live here. prod would add PROD_*.
 gh variable set AWS_REGION --repo "$repo" --body "$region"
-gh variable set AWS_ACCOUNT_ID --repo "$repo" --body "$(out account_id)"
-gh variable set TF_STATE_BUCKET --repo "$repo" --body "$(out state_bucket)"
-gh variable set AWS_PLAN_ROLE_ARN --repo "$repo" --body "$(out plan_role_arn)"
+gh variable set DEV_AWS_ACCOUNT_ID --repo "$repo" --body "$(out account_id)"
+gh variable set DEV_TF_STATE_BUCKET --repo "$repo" --body "$(out state_bucket)"
+gh variable set DEV_AWS_PLAN_ROLE_ARN --repo "$repo" --body "$(out plan_role_arn)"
 
 # Environment: one reviewer, custom branch policy limited to main.
 jq -n --argjson id "$reviewer_id" '{
@@ -39,7 +44,9 @@ grep -qx main <<<"$existing" || gh api -X POST "repos/${repo}/environments/dev/d
 
 gh variable set AWS_APPLY_ROLE_ARN --repo "$repo" --env dev --body "$apply_role"
 
-# Ruleset on main. Check names must match the job names in ci.yaml.
+# Ruleset on main. The only required check is the CI gate job, which depends on
+# every other CI job (matrix jobs are skipped when nothing relevant changed, so
+# their names can't be required directly).
 ruleset=$(jq -n '{
   name: "main",
   target: "branch",
@@ -58,10 +65,7 @@ ruleset=$(jq -n '{
     {type: "required_status_checks", parameters: {
       strict_required_status_checks_policy: true,
       required_status_checks: [
-        {context: "Format, validate, lint, docs"},
-        {context: "Trivy misconfiguration scan"},
-        {context: "Policy lint and unit tests"},
-        {context: "Plan and policy check (dev)"}
+        {context: "CI gate"}
       ]
     }}
   ]

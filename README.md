@@ -19,12 +19,15 @@ terraform/
   modules/                 small reusable building blocks
     network/  instance/  bucket/
   stacks/base/             wires the modules into one environment
-  environments/dev/        config only: backend, provider, terraform.tfvars
+  live/dev/                config only: backend, provider, terraform.tfvars
 policy/terraform/          Rego policies + tests, evaluated by conftest against the plan
 .github/
-  workflows/ci.yaml        PR: static checks, Trivy, policy tests, plan + conftest
+  workflows/ci.yaml        PR: change detection, static checks, Trivy, policy tests,
+                           terraform test, plan + conftest, one CI gate
   workflows/cd.yaml        main: plan + conftest, then apply after approval
   actions/terraform-setup/ shared "install, assume role, init" steps
+  actions/terraform-report/ plan/apply report for the job summary and PR comment
+  scripts/changes.sh       works out which modules to test and which environments to plan
 scripts/configure-github.sh   repo variables, dev environment, branch ruleset
 ```
 
@@ -53,7 +56,7 @@ This creates:
 
 - **State bucket:** versioned, TLS-only, with `prevent_destroy`.
 - **GitHub OIDC provider.**
-- **Plan role:** read-only, assumable from PRs and from `main`.
+- **Plan role:** read-only, one per account, assumable from PRs and from `main`.
 - **`dev` apply role:** assumable only from the `dev` GitHub Environment.
 - **Permissions boundary:** every role the pipeline creates must carry it.
 - **Session Manager's Default Host Management Configuration (DHMC).**
@@ -67,7 +70,7 @@ Bootstrap state stays local and git-ignored for now. Moving it into the state bu
 scripts/configure-github.sh            # reviewer defaults to you
 ```
 
-This sets the repository variables. It creates the `dev` environment with a required reviewer, deployments from `main` only, and the apply role ARN. It also adds a ruleset on `main` that requires a PR and all four CI checks. Nothing in GitHub is a secret: OIDC means there are no AWS keys to store.
+This creates the `dev` GitHub Environment (required reviewer, deployments from `main` only), which holds the apply role ARN. At repository level it sets `AWS_REGION` plus the per-environment settings the plan jobs need, prefixed with the environment name: `DEV_AWS_ACCOUNT_ID`, `DEV_TF_STATE_BUCKET`, `DEV_AWS_PLAN_ROLE_ARN`. Plan jobs don't run in an environment, so those settings can't live on one. prod would add `PROD_*`. It also adds a ruleset on `main` that requires a PR and the `CI gate` check. Nothing in GitHub is a secret: OIDC means there are no AWS keys to store.
 
 > Environments with required reviewers and enforced rulesets on a **private** repo need a paid GitHub plan. On GitHub Free, make the repo public or the protections are not enforced.
 
@@ -78,7 +81,7 @@ Open a PR. CI posts the plan and the policy results as a comment. After merge, C
 Running a plan locally works with your own credentials:
 
 ```bash
-cd terraform/environments/dev
+cd terraform/live/dev
 terraform init -backend-config="bucket=tfstate-acme-<account-id>"
 terraform plan
 ```
@@ -86,12 +89,12 @@ terraform plan
 ### 4. Tear down
 
 ```bash
-cd terraform/environments/dev && terraform destroy     # admin credentials
+cd terraform/live/dev && terraform destroy     # admin credentials
 ```
 
 There's no destroy workflow on purpose. Destroying an environment is rare, so it should be done by a person with full context, not by a button in a pipeline. The bootstrap stays: the state bucket has `prevent_destroy`.
 
-**Cost.** Left running, dev costs roughly $45–50/month in eu-central-1. Most of that is the three SSM interface endpoints (~$26) and the two t3.micro instances (~$17). The plan is to apply, capture the evidence and destroy the same day; the bootstrap costs effectively nothing (budget alarm, empty bucket, IAM).
+**Cost.** Left running, dev costs roughly $45–50/month in eu-central-1. Most of that is the three SSM interface endpoints (~$26) and the two t3.micro instances (~$17). I applied it, captured the evidence and destroyed it afterwards. The bootstrap costs effectively nothing (budget alarm, near-empty bucket, IAM).
 
 ## Private instance access (item 3)
 
@@ -126,7 +129,8 @@ Three layers, all before anything is applied:
 | Layer | Runs on | Catches |
 | --- | --- | --- |
 | `terraform fmt/validate`, tflint (AWS ruleset), terraform-docs check | PR | Broken or sloppy code, invalid instance types, stale module docs |
-| **Trivy** (`trivy config`) | PR, and pre-commit | Generic AWS misconfiguration in the HCL: public buckets, open security groups, missing encryption, IMDSv1, and so on. Any finding at any severity fails the job. |
+| **`terraform test`** (mocked provider) | PR, for changed modules/stacks | Module contracts: private by default, IMDSv2, EIP only when public, boundary on every role, input validation |
+| **Trivy** (`trivy config`) | PR, and pre-commit | Generic AWS misconfiguration in the HCL: public buckets, SSH/RDP open to the world, missing encryption, IMDSv1, and so on. Any finding at any severity fails the job. |
 | **conftest** (Rego in `policy/`) | PR and CD, on the **plan JSON** | House rules, evaluated on resolved values. See below. |
 
 Why both Trivy and conftest:
@@ -152,15 +156,33 @@ The policies:
   - Policy documents that are only known after apply produce a **warning**.
 - **Tags:** every taggable resource carries `Project`, `Environment`, `Owner` and `ManagedBy`.
 
+**CI is change-aware.** `scripts/changes.sh` diffs the PR against its base:
+
+- A module change tests that module plus every stack (stacks consume modules), and plans every environment.
+- A stack change tests the stack and plans every environment.
+- An environment change plans only that environment.
+- A change to the gates themselves (`policy/`, `.github/`, Trivy or tflint config) plans everything.
+
+Matrix jobs are skipped when nothing relevant changed, so the branch ruleset requires one job, **CI gate**. It fails if anything it depends on failed or was cancelled.
+
+**Plan and apply reports.** Each plan (CI and CD) and each apply (CD) posts the same report to the job summary and, on PRs, as a sticky comment:
+
+- the `Plan:` line;
+- the command that ran;
+- a one-line-per-resource diff (green create, orange update/replace, red destroy);
+- the full output, collapsed.
+
+The refresh noise (`Reading...`, `Refreshing state...`) is cut out.
+
 Policies have unit tests (`opa test`, 100% coverage, CI fails below 90%) and are linted with Regal. The structure follows my [opa-template-repo](https://github.com/christosgalano/opa-template-repo).
 
 I dropped Checkov, which came with my template. Trivy covers the same AWS checks, and two scanners mean two suppression formats and twice the noise for the same signal.
 
-**Evidence (R2):** see [`docs/evidence/`](docs/evidence/) and the open PR from the `demo/non-compliant` branch. It opens SSH to the world on the private instance and switches off one bucket public-access setting. Trivy and conftest both fail it, independently.
+**Evidence (R2):** [PR #6](https://github.com/christosgalano/silver-octo-garbanzo/pull/6), from the `demo/non-compliant` branch, stays open and unmerged on purpose. It opens SSH to the world on the private instance and switches off one bucket public-access setting. Trivy and conftest both fail it, independently, and the ruleset keeps it unmergeable.
 
 ## Plan and apply (R4)
 
-- **PRs:** `terraform plan` runs with the read-only plan role and `-lock=false`. A plan can't block an apply, and the plan role never needs write access to state. The plan and the conftest output are posted on the PR.
+- **PRs:** `terraform plan` runs with the account's read-only plan role and `-lock=false`. A plan can't block an apply, and the plan role never needs write access to state. The plan and the conftest output are posted on the PR.
 - **Apply runs automatically after merge, behind a human gate.** CD plans `main` again (the merge result can differ from the PR head), re-runs conftest on that plan, and uploads it. The apply job then waits for approval on the `dev` environment and applies that exact saved plan. If state changed in between, Terraform rejects the stale plan rather than applying something nobody saw.
 
 Why not fully automatic: even in dev, the pause costs one click and buys a look at the real plan before it touches the account. Why not manual-only: if applies are run from laptops, state and `main` drift apart. I've been bitten by exactly that, a branch apply silently reverted by the next deploy from `main`.
@@ -178,15 +200,16 @@ Every suppression is inline, directly above the resource, with the reason, so it
 
 | # | Finding | Where | Why accepted |
 | --- | --- | --- | --- |
-| 1 | `AWS-0107` security group allows ingress from the public internet | `stacks/base/compute.tf`, `public_web` ingress | It's the point of the public instance: the brief asks for HTTP/HTTPS from the internet. Limited to 80/443, tagged `Exposure=public`, and conftest enforces both. `public_ingress_cidrs` can narrow it. |
-| 2 | `AWS-0104` security group allows egress to the public internet | `stacks/base/compute.tf`, `public_web` egress | The public instance needs OS packages and the SSM endpoint. Limited to 80/443. The proper fix is a proxy or package mirror; not worth it for one dev instance. |
-| 3 | `AWS-0089` bucket access logging disabled | `modules/bucket/main.tf` | Needs a second bucket for the logs, which then needs its own story. CloudTrail data events are the better fit for "who read what". **Expires 2027-03-31:** after that date CI fails again until someone decides properly. |
-| 4 | `AWS-0089` access logging disabled on the state bucket | `bootstrap/state.tf` | One state file, two pipeline roles and admins. CloudTrail management events already record who touched it. |
-| 5 | `AWS-0132` state bucket uses SSE-S3, not a customer-managed key | `bootstrap/state.tf` | Access is controlled by IAM, and the plan role is denied object reads anywhere else. A CMK adds a key policy to maintain for little extra protection here. I'd revisit if state starts holding real secrets. |
+| 1 | `AWS-0104` security group allows egress to the public internet | `stacks/base/compute.tf`, `public_web` egress | The public instance needs OS packages and the SSM endpoint. Limited to 80/443. The proper fix is a proxy or package mirror; not worth it for one dev instance. |
+| 2 | `AWS-0089` bucket access logging disabled | `modules/bucket/main.tf` | Needs a second bucket for the logs, which then needs its own story. CloudTrail data events are the better fit for "who read what". **Expires 2027-03-31:** after that date CI fails again until someone decides properly. |
+| 3 | `AWS-0089` access logging disabled on the state bucket | `bootstrap/state.tf` | One state file, two pipeline roles and admins. CloudTrail management events already record who touched it. |
+| 4 | `AWS-0132` state bucket uses SSE-S3, not a customer-managed key | `bootstrap/state.tf` | Access is controlled by IAM, and the plan role is denied object reads anywhere else. A CMK adds a key policy to maintain for little extra protection here. I'd revisit if state starts holding real secrets. |
 
 Not suppressions, but worth listing:
 
 - **conftest warnings** for `decrypt_artifacts` and the flow-log role policy. Both reference ARNs that only exist after apply, so the policy can't inspect them. I built the S3 ARNs from names instead, so `read_artifacts` is fully checked. These two stay as warnings.
+- **No suppression for the public 80/443 ingress.** I first added one, then checked what Trivy actually evaluates: its public-ingress check (AWS-0107) only fires for SSH/RDP. Port 8080 open to the world would pass Trivy without a word. The conftest rule (web ports only, tagged `Exposure=public`) is what actually guards this, so the suppression went.
+- **Trivy reads `terraform/live/dev/terraform.tfvars`** (set in `trivy.yaml`). Without it, Trivy evaluates the environment with unknown inputs and quietly skips anything that depends on them. Nothing failed; it just checked less than it appeared to.
 - **Regal `with-outside-test-context`** is ignored for `*_test.rego` only. The test helpers wrap `with`, and they are only called from tests.
 
 ## What this does not protect against
@@ -198,6 +221,7 @@ Not suppressions, but worth listing:
 - **HTTPS isn't actually terminated.** 443 is open, but there's no certificate, because there's no domain. In a real setup the instance would sit behind an ALB with ACM, in a private subnet.
 - **Admins can bypass the ruleset.** That's intentional for break-glass, but it means "CI is required" holds for everyone except the people who can change the rule.
 - **No high availability.** One instance of each, in one AZ.
+- **Root on the instances runs as the Systems Manager role.** The SSM Agent shares its Default Host Management credentials through root's AWS credentials file, and that file wins over the instance profile in the SDK credential chain. Session Manager shells (as `ssm-user`) and the application get the instance role. Root scripts get the SSM role, which can only talk to Systems Manager. Found while testing the live environment.
 
 ## What I'd do next with more time
 
@@ -207,4 +231,5 @@ Not suppressions, but worth listing:
 4. Scheduled drift detection (nightly `plan -detailed-exitcode` that opens an issue).
 5. Tighten the apply role with tag-based conditions on EC2 and KMS, and move to a dedicated account per environment under AWS Organizations, with SCPs as the outer fence.
 6. A conftest rule that instance profiles never grant `ssm:UpdateInstanceInformation` (which would silently bypass DHMC), and one for S3 public-access-block completeness.
-7. Publish the policies as an OPA bundle so other repos consume the same rules, as in my template repo.
+7. Set `ShareCreds: false` in the SSM Agent config through user data, so root doesn't silently run as the management role.
+8. Publish the policies as an OPA bundle so other repos consume the same rules, as in my template repo.

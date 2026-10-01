@@ -1,10 +1,10 @@
 output "state_bucket" {
-  description = "Terraform state bucket. Set as the TF_STATE_BUCKET repository variable."
+  description = "Terraform state bucket. Set as the <ENV>_ repository variables (e.g. DEV_TF_STATE_BUCKET)."
   value       = aws_s3_bucket.state.id
 }
 
 output "plan_role_arn" {
-  description = "Set as the AWS_PLAN_ROLE_ARN repository variable."
+  description = "Plan role for this account. Set as the <ENV>_ repository variables (e.g. DEV_TF_STATE_BUCKET)."
   value       = aws_iam_role.plan.arn
 }
 
@@ -14,7 +14,7 @@ output "apply_role_arns" {
 }
 
 output "account_id" {
-  description = "Set as the AWS_ACCOUNT_ID repository variable."
+  description = "Account ID. Set as the <ENV>_ repository variables (e.g. DEV_TF_STATE_BUCKET)."
   value       = local.account_id
 }
 

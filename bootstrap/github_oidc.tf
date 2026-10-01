@@ -2,11 +2,14 @@
 # in the repository or in GitHub secrets.
 #
 # Two kinds of role:
-#   plan  - read-only, assumable from pull requests and from main. Used to plan.
-#   apply - one per GitHub Environment, assumable ONLY from a job that runs in
-#           that environment. The environment is where the required reviewer and
-#           the main-only branch rule live, so the AWS trust and the GitHub gate
-#           enforce the same contract.
+#   plan  - one per account, read-only, assumable from pull requests and main.
+#   apply - one per environment, assumable ONLY from a job that runs in that
+#           GitHub Environment. The environment is where the required reviewer
+#           and the main-only branch rule live, so the AWS trust and the GitHub
+#           gate enforce the same contract.
+#
+# With one AWS account per environment, the account boundary is what separates
+# environments; each account's plan role can only see its own account.
 
 locals {
   oidc_host = "token.actions.githubusercontent.com"

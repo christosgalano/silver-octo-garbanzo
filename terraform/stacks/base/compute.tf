@@ -10,21 +10,17 @@ resource "aws_security_group" "public_web" {
   tags = { Name = "${var.name}-public-web", Exposure = "public" }
 }
 
-#trivy:ignore:AWS-0107 This instance exists to serve the internet on 80/443. Scoped by public_ingress_cidrs; see README, R3.
+# Internet-facing on purpose. Trivy's public-ingress check only covers SSH/RDP,
+# so the "web ports only, tagged public" rule is enforced by conftest instead.
 resource "aws_vpc_security_group_ingress_rule" "public_web" {
-  for_each = {
-    for pair in setproduct(var.public_ingress_cidrs, [80, 443]) : "${pair[1]}-${pair[0]}" => {
-      cidr = pair[0]
-      port = pair[1]
-    }
-  }
+  for_each = toset(["80", "443"])
 
   security_group_id = aws_security_group.public_web.id
-  description       = "TCP ${each.value.port} from ${each.value.cidr}"
+  description       = "TCP ${each.key} from ${var.public_ingress_cidr}"
   ip_protocol       = "tcp"
-  from_port         = each.value.port
-  to_port           = each.value.port
-  cidr_ipv4         = each.value.cidr
+  from_port         = tonumber(each.key)
+  to_port           = tonumber(each.key)
+  cidr_ipv4         = var.public_ingress_cidr
 
   tags = { Exposure = "public" }
 }

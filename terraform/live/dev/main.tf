@@ -9,6 +9,6 @@ module "base" {
   az_count                     = var.az_count
   interface_endpoints_multi_az = var.interface_endpoints_multi_az
   instance_type                = var.instance_type
-  public_ingress_cidrs         = var.public_ingress_cidrs
+  public_ingress_cidr          = var.public_ingress_cidr
   artifacts_force_destroy      = var.artifacts_force_destroy
 }
