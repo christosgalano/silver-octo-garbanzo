@@ -20,7 +20,7 @@ Root module for the dev environment. Backend, provider and one call to the base 
 
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
-| artifacts\_force\_destroy | Allow destroy to empty the artefacts bucket. | `bool` | n/a | yes |
+| artifacts\_force\_destroy | Allow destroy to empty the artifacts bucket. | `bool` | n/a | yes |
 | az\_count | Number of availability zones. | `number` | n/a | yes |
 | environment | Environment name. | `string` | n/a | yes |
 | instance\_type | Instance type for both instances. | `string` | n/a | yes |
@@ -36,7 +36,7 @@ Root module for the dev environment. Backend, provider and one call to the base 
 
 | Name | Description |
 | ---- | ----------- |
-| artifacts\_bucket | Artefacts and logs bucket name. |
+| artifacts\_bucket | Artifacts and logs bucket name. |
 | private\_instance\_id | Private instance ID. Connect with: aws ssm start-session --target <id> |
 | public\_instance\_id | Public instance ID. |
 | public\_instance\_ip | Elastic IP of the public instance. |

@@ -44,7 +44,7 @@ variable "public_ingress_cidr" {
 }
 
 variable "artifacts_force_destroy" {
-  description = "Allow destroy to empty the artefacts bucket. Only ever true in throwaway environments."
+  description = "Allow destroy to empty the artifacts bucket. Only ever true in throwaway environments."
   type        = bool
   default     = false
 }

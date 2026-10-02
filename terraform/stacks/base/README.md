@@ -1,6 +1,6 @@
 # base stack
 
-Everything one environment needs, wired together: KMS key, network, artefacts bucket, the public web instance and the private instance with its read-only role. Environments call this stack with their own values and nothing else.
+Everything one environment needs, wired together: KMS key, network, artifacts bucket, the public web instance and the private instance with its read-only role. Environments call this stack with their own values and nothing else.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
@@ -54,7 +54,7 @@ Everything one environment needs, wired together: KMS key, network, artefacts bu
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
 | name | Name prefix for the environment, e.g. acme-dev. | `string` | n/a | yes |
-| artifacts\_force\_destroy | Allow destroy to empty the artefacts bucket. Only ever true in throwaway environments. | `bool` | `false` | no |
+| artifacts\_force\_destroy | Allow destroy to empty the artifacts bucket. Only ever true in throwaway environments. | `bool` | `false` | no |
 | az\_count | Number of availability zones. | `number` | `2` | no |
 | instance\_type | Instance type for both instances. | `string` | `"t3.micro"` | no |
 | interface\_endpoints\_multi\_az | Put SSM interface endpoints in every AZ. False keeps them in the private instance's AZ only, which is cheaper and loses nothing while there is one private instance. | `bool` | `true` | no |
@@ -66,7 +66,7 @@ Everything one environment needs, wired together: KMS key, network, artefacts bu
 
 | Name | Description |
 | ---- | ----------- |
-| artifacts\_bucket | Artefacts and logs bucket name. |
+| artifacts\_bucket | Artifacts and logs bucket name. |
 | private\_instance\_id | Private instance ID. Connect with: aws ssm start-session --target <id> |
 | public\_instance\_id | Public instance ID. |
 | public\_instance\_ip | Elastic IP of the public instance. |

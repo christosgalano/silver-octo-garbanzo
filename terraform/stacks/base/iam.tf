@@ -1,4 +1,4 @@
-# Role for the private instance: read the artefacts bucket, nothing else.
+# Role for the private instance: read the artifacts bucket, nothing else.
 #
 # It deliberately has no Systems Manager permissions. Session Manager access comes
 # from Default Host Management Configuration (set up outside this repo), which only
@@ -54,7 +54,7 @@ data "aws_iam_policy_document" "decrypt_artifacts" {
 
 resource "aws_iam_role" "private" {
   name                 = "${var.name}-private-instance"
-  description          = "Private instance: read-only access to the artefacts bucket"
+  description          = "Private instance: read-only access to the artifacts bucket"
   assume_role_policy   = data.aws_iam_policy_document.private_trust.json
   permissions_boundary = local.permissions_boundary_arn
 }

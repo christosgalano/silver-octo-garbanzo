@@ -19,6 +19,6 @@ output "private_instance_id" {
 }
 
 output "artifacts_bucket" {
-  description = "Artefacts and logs bucket name."
+  description = "Artifacts and logs bucket name."
   value       = module.artifacts.id
 }

@@ -50,6 +50,6 @@ variable "public_ingress_cidr" {
 }
 
 variable "artifacts_force_destroy" {
-  description = "Allow destroy to empty the artefacts bucket."
+  description = "Allow destroy to empty the artifacts bucket."
   type        = bool
 }

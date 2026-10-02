@@ -21,7 +21,7 @@ locals {
 # Encryption
 # -----------------------------------------------------------------------------
 
-# One key for this environment's data at rest: the artefacts bucket and the flow
+# One key for this environment's data at rest: the artifacts bucket and the flow
 # log group. Key policy keeps admin with the account and lets CloudWatch Logs use
 # it only for this environment's log groups.
 data "aws_iam_policy_document" "kms" {
