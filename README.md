@@ -26,7 +26,10 @@ Every PR runs formatting, validation, tflint and a docs check. Changed modules g
 - security groups: world ingress only on web ports and only when tagged, never SSH or RDP;
 - instances: approved types, IMDSv2, no automatic public IPs;
 - IAM: the permissions boundary on every role, no wildcards;
-- tags: the mandatory ones on everything that can have them.
+- tags: the mandatory ones on everything that can have them;
+- renames: destroying one `for_each` key while creating another of the same resource fails until a `moved` block is added.
+
+Pull requests from forks are not planned and fail the gate, because their code would run as the plan role.
 
 CI only runs what a change touches, and the branch ruleset requires a single **CI gate** check. Every plan and apply is reported in the job summary and as a PR comment.
 

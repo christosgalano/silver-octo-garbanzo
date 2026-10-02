@@ -160,7 +160,8 @@ jobs:
   plan:
     name: Plan and policy check (${{ matrix.environment }})
     needs: changes
-    if: needs.changes.outputs.environments != '[]'
+    # Fork PRs never get AWS credentials: their code would run as the plan role.
+    if: needs.changes.outputs.environments != '[]' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -324,8 +325,13 @@ jobs:
       - name: Check results
         env:
           RESULTS: ${{ toJson(needs) }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
           echo "${RESULTS}" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if [ "${IS_FORK}" = "true" ]; then
+            echo "::error::Fork PRs are not planned. A maintainer must push the change to a branch in this repository."
+            exit 1
+          fi
           if echo "${RESULTS}" | jq -e '[.[].result] | any(. == "failure" or . == "cancelled")' >/dev/null; then
             echo "::error::One or more required jobs failed."
             exit 1

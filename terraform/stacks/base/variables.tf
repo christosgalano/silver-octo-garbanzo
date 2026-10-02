@@ -33,9 +33,8 @@ variable "instance_type" {
 }
 
 variable "public_ingress_cidr" {
-  description = "CIDR allowed to reach the public instance on 80/443."
+  description = "CIDR allowed to reach the public instance on 80/443. No default: opening it to the internet must be a visible choice in the environment's tfvars."
   type        = string
-  default     = "0.0.0.0/0"
 
   validation {
     condition     = can(cidrhost(var.public_ingress_cidr, 0))
