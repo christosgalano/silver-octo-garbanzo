@@ -35,7 +35,18 @@ CI only runs what a change touches, and the branch ruleset requires a single **C
 
 [PR #6](https://github.com/christosgalano/silver-octo-garbanzo/pull/6) stays open on purpose as evidence. It opens SSH to the world, and both scanners fail it.
 
-Every suppression is inline, next to the resource, with its reason: egress for package installs, bucket access logging, and the state bucket's logging and encryption. One of them expires on 2027-03-31.
+Every suppression is inline, next to the resource, with its reason. The full list is under **Accepted findings** below.
+
+## Accepted findings (R3)
+
+| Finding | Where | Why accepted |
+| --- | --- | --- |
+| AWS-0104: unrestricted egress | public instance security group | The instance needs outbound HTTP/HTTPS for OS packages and the SSM endpoint. Egress is limited to ports 80 and 443. |
+| AWS-0089: no server access logging (expires 2027-03-31) | artifacts bucket | Access logging needs a separate log bucket and extra storage and operations. Accepted for dev. Revisit for production. |
+| AWS-0089: no server access logging | state bucket (`bootstrap/`, outside this repo) | Deliberately omitted for this assessment. Production should add CloudTrail S3 data events, which are not configured here. |
+| AWS-0132: SSE-S3 instead of a customer-managed KMS key | state bucket (`bootstrap/`, outside this repo) | Access is limited to the pipeline roles and admins. Production would use a CMK. |
+
+No blanket suppressions, no `.trivyignore`.
 
 ## Delivery
 
