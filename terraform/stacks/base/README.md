@@ -54,12 +54,12 @@ Everything one environment needs, wired together: KMS key, network, artifacts bu
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
 | name | Name prefix for the environment, e.g. acme-dev. | `string` | n/a | yes |
+| public\_ingress\_cidr | CIDR allowed to reach the public instance on 80/443. No default: opening it to the internet must be a visible choice in the environment's tfvars. | `string` | n/a | yes |
 | artifacts\_force\_destroy | Allow destroy to empty the artifacts bucket. Only ever true in throwaway environments. | `bool` | `false` | no |
 | az\_count | Number of availability zones. | `number` | `2` | no |
 | instance\_type | Instance type for both instances. | `string` | `"t3.micro"` | no |
 | interface\_endpoints\_multi\_az | Put SSM interface endpoints in every AZ. False keeps them in the private instance's AZ only, which is cheaper and loses nothing while there is one private instance. | `bool` | `true` | no |
 | permissions\_boundary\_name | Name of the IAM policy (created outside this repo) that every role in this stack must carry as its permissions boundary. | `string` | `"acme-workload-boundary"` | no |
-| public\_ingress\_cidr | CIDR allowed to reach the public instance on 80/443. | `string` | `"0.0.0.0/0"` | no |
 | vpc\_cidr | VPC CIDR block. | `string` | `"10.0.0.0/16"` | no |
 
 ## Outputs
